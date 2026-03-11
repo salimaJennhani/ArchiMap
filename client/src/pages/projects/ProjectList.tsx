@@ -13,9 +13,9 @@ import { z } from "zod";
 import { insertProjectSchema } from "@shared/routes";
 
 const formSchema = insertProjectSchema.extend({
-  latitude: z.coerce.number().min(-90).max(90),
-  longitude: z.coerce.number().min(-180).max(180),
-  budget: z.coerce.number().optional(),
+  latitude: z.union([z.string(), z.number()]).transform(v => Number(v)).pipe(z.number().min(-90).max(90)),
+  longitude: z.union([z.string(), z.number()]).transform(v => Number(v)).pipe(z.number().min(-180).max(180)),
+  budget: z.union([z.string(), z.number()]).optional().transform(v => v ? Number(v) : undefined),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -77,28 +77,29 @@ export default function ProjectList() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Project Name</label>
                 <Input {...register("name")} placeholder="e.g. Downtown Highrise" />
-                {errors.name && <p className="text-xs text-destructive">{errors.name.message as string}</p>}
+                {errors.name && <p className="text-xs text-red-500">{String(errors.name?.message)}</p>}
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Client</label>
                 <Input {...register("client")} placeholder="e.g. Acme Corp" />
-                {errors.client && <p className="text-xs text-destructive">{errors.client.message as string}</p>}
+                {errors.client && <p className="text-xs text-red-500">{String(errors.client?.message)}</p>}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Latitude</label>
-                  <Input type="number" step="any" {...register("latitude")} placeholder="34.0522" />
-                  {errors.latitude && <p className="text-xs text-destructive">{errors.latitude.message as string}</p>}
+                  <Input type="number" step="0.0001" {...register("latitude")} placeholder="34.0522" />
+                  {errors.latitude && <p className="text-xs text-red-500">{String(errors.latitude?.message)}</p>}
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Longitude</label>
-                  <Input type="number" step="any" {...register("longitude")} placeholder="-118.2437" />
-                  {errors.longitude && <p className="text-xs text-destructive">{errors.longitude.message as string}</p>}
+                  <Input type="number" step="0.0001" {...register("longitude")} placeholder="-118.2437" />
+                  {errors.longitude && <p className="text-xs text-red-500">{String(errors.longitude?.message)}</p>}
                 </div>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Budget ($)</label>
-                <Input type="number" {...register("budget")} placeholder="500000" />
+                <Input type="number" step="0.01" {...register("budget")} placeholder="500000" />
+                {errors.budget && <p className="text-xs text-red-500">{String(errors.budget?.message)}</p>}
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>

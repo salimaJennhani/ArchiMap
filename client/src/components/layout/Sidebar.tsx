@@ -39,7 +39,7 @@ export function Sidebar() {
                 flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200
                 ${isActive 
                   ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 font-medium" 
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                 }
               `}
             >

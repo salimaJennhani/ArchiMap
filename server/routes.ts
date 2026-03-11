@@ -36,10 +36,11 @@ export async function registerRoutes(
   app.post(api.projects.create.path, requireAuth, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      // coerce latitude/longitude if sent as strings from form
+      // coerce latitude/longitude/budget if sent as strings from form
       const bodySchema = api.projects.create.input.extend({
         latitude: z.union([z.string(), z.number()]).transform(v => String(v)),
         longitude: z.union([z.string(), z.number()]).transform(v => String(v)),
+        budget: z.union([z.string(), z.number()]).optional().transform(v => v ? String(v) : undefined),
       });
       const input = bodySchema.parse(req.body);
       const item = await storage.createProject(userId, input);
@@ -63,6 +64,7 @@ export async function registerRoutes(
       const bodySchema = api.projects.update.input.extend({
         latitude: z.union([z.string(), z.number()]).transform(v => String(v)).optional(),
         longitude: z.union([z.string(), z.number()]).transform(v => String(v)).optional(),
+        budget: z.union([z.string(), z.number()]).optional().transform(v => v ? String(v) : undefined),
       });
       const input = bodySchema.parse(req.body);
       

@@ -21,11 +21,10 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
         {[
           { label: "Total Projects", value: stats?.totalProjects, icon: Building2, color: "text-blue-500", bg: "bg-blue-500/10" },
-          { label: "Active Sites", value: stats?.activeProjects, icon: Activity, color: "text-emerald-500", bg: "bg-emerald-500/10" },
-          { label: "Upcoming Visits", value: stats?.upcomingVisits, icon: CalendarClock, color: "text-amber-500", bg: "bg-amber-500/10" },
+          { label: "Projects in Progress", value: stats?.activeProjects, icon: Activity, color: "text-emerald-500", bg: "bg-emerald-500/10" },
         ].map((stat, i) => (
           <div key={i} className="bg-card rounded-2xl p-6 shadow-sm border border-border/50 flex items-center gap-5 hover:shadow-md transition-shadow">
             <div className={`p-4 rounded-xl ${stat.bg}`}>
@@ -42,10 +41,10 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Recent Active Projects */}
+        {/* All Projects List */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-foreground" style={{ fontFamily: 'var(--font-display)' }}>Active Sites</h2>
+            <h2 className="text-xl font-bold text-foreground" style={{ fontFamily: 'var(--font-display)' }}>Your Projects</h2>
             <Link href="/projects" className="text-sm text-primary font-medium hover:underline flex items-center gap-1">
               View all <ArrowUpRight className="w-4 h-4" />
             </Link>
@@ -54,28 +53,29 @@ export default function Dashboard() {
           <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden">
             {projectsLoading ? (
               <div className="p-8 text-center text-muted-foreground">Loading projects...</div>
-            ) : activeProjects.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">No active projects found.</div>
+            ) : projects?.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">No projects yet. Create your first one!</div>
             ) : (
-              <div className="divide-y divide-border/50">
-                {activeProjects.map(project => (
+              <div className="divide-y divide-border/50 max-h-[500px] overflow-y-auto">
+                {projects?.slice(0, 6).map(project => (
                   <Link key={project.id} href={`/projects/${project.id}`} className="flex items-center justify-between p-5 hover:bg-muted/30 transition-colors group">
-                    <div className="flex items-start gap-4">
+                    <div className="flex items-start gap-4 flex-1">
                       <div className="bg-primary/10 p-3 rounded-lg text-primary mt-1">
                         <MapPin className="w-5 h-5" />
                       </div>
-                      <div>
-                        <h4 className="font-semibold text-foreground group-hover:text-primary transition-colors">{project.name}</h4>
-                        <p className="text-sm text-muted-foreground">{project.client}</p>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-foreground group-hover:text-primary transition-colors truncate">{project.name}</h4>
+                        <p className="text-sm text-muted-foreground truncate">{project.client}</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600">
-                        Active
+                    <div className="text-right ml-2">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                        project.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' :
+                        project.status === 'completed' ? 'bg-blue-500/10 text-blue-600' :
+                        'bg-amber-500/10 text-amber-600'
+                      }`}>
+                        {project.status}
                       </span>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {format(new Date(project.createdAt!), "MMM d, yyyy")}
-                      </p>
                     </div>
                   </Link>
                 ))}

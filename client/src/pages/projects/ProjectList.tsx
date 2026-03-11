@@ -16,6 +16,7 @@ const formSchema = insertProjectSchema.extend({
   latitude: z.union([z.string(), z.number()]).transform(v => Number(v)).pipe(z.number().min(-90).max(90)),
   longitude: z.union([z.string(), z.number()]).transform(v => Number(v)).pipe(z.number().min(-180).max(180)),
   budget: z.union([z.string(), z.number()]).optional().transform(v => v ? Number(v) : undefined),
+  description: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -100,6 +101,10 @@ export default function ProjectList() {
                 <label className="text-sm font-medium">Budget ($)</label>
                 <Input type="number" step="0.01" {...register("budget")} placeholder="500000" />
                 {errors.budget && <p className="text-xs text-red-500">{String(errors.budget?.message)}</p>}
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Description</label>
+                <textarea {...register("description")} placeholder="Project details, scope, and notes..." className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>

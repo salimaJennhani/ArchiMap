@@ -137,12 +137,15 @@ function VisitTab({ projectId, visits, isLoading }: { projectId: number, visits:
   const createVisit = useCreateVisit();
   
   const formSchema = z.object({
-    visitDate: z.string(),
-    notes: z.string().min(1),
+    visitDate: z.string().refine(
+      (date) => new Date(date) >= new Date(new Date().setHours(0, 0, 0, 0)),
+      "Visit date must be today or in the future"
+    ),
+    notes: z.string().min(1, "Notes are required"),
     progressStatus: z.string().optional(),
   });
 
-  const { register, handleSubmit, reset } = useForm<z.infer<typeof formSchema>>({
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: { visitDate: new Date().toISOString().split('T')[0] }
   });
@@ -165,8 +168,9 @@ function VisitTab({ projectId, visits, isLoading }: { projectId: number, visits:
             <DialogHeader><DialogTitle>Log New Site Visit</DialogTitle></DialogHeader>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div>
-                <label className="text-sm font-medium mb-1 block">Date</label>
-                <Input type="date" {...register("visitDate")} />
+                <label className="text-sm font-medium mb-1 block">Visit Date (Today or Future)</label>
+                <Input type="date" {...register("visitDate")} min={new Date().toISOString().split('T')[0]} />
+                {errors.visitDate && <p className="text-xs text-red-500 mt-1">{String(errors.visitDate.message)}</p>}
               </div>
               <div>
                 <label className="text-sm font-medium mb-1 block">Progress Status</label>
@@ -175,6 +179,7 @@ function VisitTab({ projectId, visits, isLoading }: { projectId: number, visits:
               <div>
                 <label className="text-sm font-medium mb-1 block">Notes</label>
                 <textarea {...register("notes")} className="w-full flex min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" placeholder="Observation notes..."></textarea>
+                {errors.notes && <p className="text-xs text-red-500 mt-1">{String(errors.notes.message)}</p>}
               </div>
               <Button type="submit" className="w-full" disabled={createVisit.isPending}>
                 {createVisit.isPending ? "Saving..." : "Save Visit"}

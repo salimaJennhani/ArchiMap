@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { useProjects, useCreateProject } from "@/hooks/use-projects";
 import { Link } from "wouter";
-import { Plus, MapPin, Building, Search, Loader2 } from "lucide-react";
+import { Plus, MapPin, Building, Search, Loader2, LocateFixed, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { format } from "date-fns";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { insertProjectSchema } from "@shared/routes";
+import { MapPreview } from "@/components/map/ProjectMap";
 
 const formSchema = insertProjectSchema.extend({
   latitude: z.union([z.string(), z.number()]).transform(v => Number(v)).pipe(z.number().min(-90).max(90)),
@@ -21,40 +22,100 @@ const formSchema = insertProjectSchema.extend({
 
 type FormValues = z.infer<typeof formSchema>;
 
+function AddressSearch({ onSelect }: { onSelect: (lat: number, lng: number, label: string) => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Array<{ lat: string; lon: string; display_name: string }>>([]);
+  const [loading, setLoading] = useState(false);
+
+  const search = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      const data = await res.json();
+      setResults(data);
+    } catch {
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium">Address / Location Search</label>
+      <div className="flex gap-2">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), search())}
+          placeholder="e.g. 123 Main St, Paris"
+        />
+        <Button type="button" variant="secondary" onClick={search} disabled={loading} className="shrink-0">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LocateFixed className="w-4 h-4" />}
+        </Button>
+      </div>
+      {results.length > 0 && (
+        <div className="border border-border rounded-lg overflow-hidden shadow-md bg-background">
+          {results.map((r, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                onSelect(parseFloat(r.lat), parseFloat(r.lon), r.display_name);
+                setResults([]);
+                setQuery(r.display_name.split(",").slice(0, 2).join(","));
+              }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors border-b border-border/50 last:border-0 truncate"
+            >
+              <MapPin className="w-3 h-3 inline-block mr-1 text-primary" />
+              {r.display_name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProjectList() {
   const { data: projects, isLoading } = useProjects();
   const createProject = useCreateProject();
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, setValue, control, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      status: "planned"
-    }
+    defaultValues: { status: "planned" }
   });
+
+  const watchedLat = useWatch({ control, name: "latitude" });
+  const watchedLng = useWatch({ control, name: "longitude" });
+  const previewLat = Number(watchedLat);
+  const previewLng = Number(watchedLng);
+  const showPreview = !isNaN(previewLat) && !isNaN(previewLng) && previewLat !== 0 && previewLng !== 0;
 
   const onSubmit = (data: FormValues) => {
     createProject.mutate(data, {
-      onSuccess: () => {
-        setIsDialogOpen(false);
-        reset();
-      }
+      onSuccess: () => { setIsDialogOpen(false); reset(); }
     });
   };
 
-  const filteredProjects = projects?.filter(p => 
-    p.name.toLowerCase().includes(search.toLowerCase()) || 
-    p.client.toLowerCase().includes(search.toLowerCase())
-  );
-
   const getStatusColor = (status: string) => {
-    switch(status) {
+    switch (status) {
       case 'active': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
       case 'completed': return 'bg-blue-500/10 text-blue-600 border-blue-500/20';
       default: return 'bg-amber-500/10 text-amber-600 border-amber-500/20';
     }
   };
+
+  const filteredProjects = projects?.filter(p =>
+    p.name.toLowerCase().includes(search.toLowerCase()) ||
+    p.client.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <ProtectedLayout>
@@ -63,58 +124,87 @@ export default function ProjectList() {
           <h1 className="text-3xl font-bold text-foreground mb-2" style={{ fontFamily: 'var(--font-display)' }}>Projects</h1>
           <p className="text-muted-foreground">Manage your construction sites and client portfolios.</p>
         </div>
-        
+
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-md">
               <Plus className="w-5 h-5 mr-2" /> New Project
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-2xl" style={{ fontFamily: 'var(--font-display)' }}>Create New Project</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Project Name</label>
+                <label className="text-sm font-medium">Project Name *</label>
                 <Input {...register("name")} placeholder="e.g. Downtown Highrise" />
                 {errors.name && <p className="text-xs text-red-500">{String(errors.name?.message)}</p>}
               </div>
+
               <div className="space-y-2">
-                <label className="text-sm font-medium">Client</label>
+                <label className="text-sm font-medium">Client *</label>
                 <Input {...register("client")} placeholder="e.g. Acme Corp" />
                 {errors.client && <p className="text-xs text-red-500">{String(errors.client?.message)}</p>}
               </div>
+
+              {/* Address search → auto-fills lat/lng */}
+              <AddressSearch
+                onSelect={(lat, lng) => {
+                  setValue("latitude", lat as any);
+                  setValue("longitude", lng as any);
+                }}
+              />
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Latitude</label>
-                  <Input type="number" step="0.0001" {...register("latitude")} placeholder="34.0522" />
+                  <label className="text-sm font-medium">Latitude *</label>
+                  <Input type="number" step="0.0001" {...register("latitude")} placeholder="48.8566" />
                   {errors.latitude && <p className="text-xs text-red-500">{String(errors.latitude?.message)}</p>}
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Longitude</label>
-                  <Input type="number" step="0.0001" {...register("longitude")} placeholder="-118.2437" />
+                  <label className="text-sm font-medium">Longitude *</label>
+                  <Input type="number" step="0.0001" {...register("longitude")} placeholder="2.3522" />
                   {errors.longitude && <p className="text-xs text-red-500">{String(errors.longitude?.message)}</p>}
                 </div>
               </div>
+
+              {/* Live map preview */}
+              {showPreview && (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-muted-foreground">Location Preview</label>
+                  <MapPreview lat={previewLat} lng={previewLng} height="180px" />
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-sm font-medium">Budget ($)</label>
                 <Input type="number" step="0.01" {...register("budget")} placeholder="500000" />
                 {errors.budget && <p className="text-xs text-red-500">{String(errors.budget?.message)}</p>}
               </div>
+
               <div className="space-y-2">
                 <label className="text-sm font-medium">Description</label>
-                <textarea {...register("description")} placeholder="Project details, scope, and notes..." className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                <textarea
+                  {...register("description")}
+                  placeholder="Project scope, key milestones, notes..."
+                  className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
               </div>
+
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>
-                <select {...register("status")} className="w-full flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+                <select
+                  {...register("status")}
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
                   <option value="planned">Planned</option>
                   <option value="active">Active</option>
                   <option value="completed">Completed</option>
                 </select>
               </div>
-              <Button type="submit" className="w-full mt-6" disabled={createProject.isPending}>
+
+              <Button type="submit" className="w-full mt-2" disabled={createProject.isPending}>
                 {createProject.isPending ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Create Project"}
               </Button>
             </form>
@@ -124,9 +214,9 @@ export default function ProjectList() {
 
       <div className="relative mb-8 max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-        <Input 
-          className="pl-10 h-12 rounded-xl bg-card border-border/50 shadow-sm" 
-          placeholder="Search projects or clients..." 
+        <Input
+          className="pl-10 h-12 rounded-xl bg-card border-border/50 shadow-sm"
+          placeholder="Search projects or clients..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -153,16 +243,22 @@ export default function ProjectList() {
                     {project.status}
                   </span>
                 </div>
-                
+
                 <h3 className="text-xl font-bold text-foreground mb-1 group-hover:text-primary transition-colors" style={{ fontFamily: 'var(--font-display)' }}>
                   {project.name}
                 </h3>
-                <p className="text-muted-foreground text-sm flex items-center gap-1.5 mb-6">
-                  <MapPin className="w-4 h-4" /> {project.client}
+                <p className="text-muted-foreground text-sm flex items-center gap-1.5 mb-2">
+                  <Building className="w-4 h-4" /> {project.client}
                 </p>
-                
+                {project.description && (
+                  <p className="text-muted-foreground text-xs leading-relaxed line-clamp-2 mb-4">{project.description}</p>
+                )}
+
                 <div className="mt-auto pt-4 border-t border-border/50 flex justify-between items-center text-sm text-muted-foreground">
-                  <span>Created {format(new Date(project.createdAt!), "MMM yyyy")}</span>
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    {parseFloat(String(project.latitude)).toFixed(3)}, {parseFloat(String(project.longitude)).toFixed(3)}
+                  </span>
                   {project.budget && <span className="font-medium text-foreground">${Number(project.budget).toLocaleString()}</span>}
                 </div>
               </div>

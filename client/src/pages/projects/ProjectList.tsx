@@ -2,17 +2,17 @@ import { useState } from "react";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { useProjects, useCreateProject, useDeleteProject } from "@/hooks/use-projects";
 import { Link } from "wouter";
-import { Plus, MapPin, Building, Search, Loader2, LocateFixed, AlertTriangle, Trash2 } from "lucide-react";
+import { Plus, Building, Search, Loader2, AlertTriangle, Trash2, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { format } from "date-fns";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { insertProjectSchema } from "@shared/routes";
-import { MapPreview } from "@/components/map/ProjectMap";
 import { useToast } from "@/hooks/use-toast";
+import { LocationSearch } from "@/components/location/LocationSearch";
 
 const formSchema = insertProjectSchema.extend({
   latitude: z.union([z.string(), z.number()]).transform(v => Number(v)).pipe(z.number().min(-90).max(90)),
@@ -22,47 +22,6 @@ const formSchema = insertProjectSchema.extend({
   address: z.string().optional(),
 });
 type FormValues = z.infer<typeof formSchema>;
-
-function AddressSearch({ onSelect }: { onSelect: (lat: number, lng: number, label: string) => void }) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const search = async () => {
-    if (!query.trim()) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`, { headers: { "Accept-Language": "en" } });
-      setResults(await res.json());
-    } catch { setResults([]); } finally { setLoading(false); }
-  };
-
-  return (
-    <div className="space-y-2">
-      <label className="text-sm font-medium">Address / Location Search</label>
-      <div className="flex gap-2">
-        <Input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && (e.preventDefault(), search())} placeholder="e.g. Tunis, Tunisia" />
-        <Button type="button" variant="secondary" onClick={search} disabled={loading} className="shrink-0">
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LocateFixed className="w-4 h-4" />}
-        </Button>
-      </div>
-      {results.length > 0 && (
-        <div className="border border-border rounded-lg overflow-hidden shadow-md bg-background z-10 relative">
-          {results.map((r, i) => (
-            <button key={i} type="button" onClick={() => {
-              onSelect(parseFloat(r.lat), parseFloat(r.lon), r.display_name);
-              setResults([]);
-              setQuery(r.display_name.split(",").slice(0, 2).join(","));
-            }} className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b border-border/50 last:border-0 truncate">
-              <MapPin className="w-3 h-3 inline mr-1 text-primary" />{r.display_name}
-            </button>
-          ))}
-        </div>
-      )}
-      <p className="text-xs text-muted-foreground">Search to auto-fill coordinates, or enter them manually below.</p>
-    </div>
-  );
-}
 
 export default function ProjectList() {
   const { data: projects, isLoading } = useProjects();
@@ -79,17 +38,14 @@ export default function ProjectList() {
     defaultValues: { status: "planned" },
   });
 
-  const watchedLat = useWatch({ control, name: "latitude" });
-  const watchedLng = useWatch({ control, name: "longitude" });
-  const previewLat = Number(watchedLat);
-  const previewLng = Number(watchedLng);
-  const showPreview = !isNaN(previewLat) && !isNaN(previewLng) && previewLat !== 0 && previewLng !== 0;
-
   const onSubmit = (data: FormValues) => {
-    createProject.mutate(data, { onSuccess: () => { setIsDialogOpen(false); reset(); } });
+    createProject.mutate(data, {
+      onSuccess: () => {
+        setIsDialogOpen(false);
+        reset();
+      },
+    });
   };
-
-  const confirmDelete = (id: number, name: string) => { setDeleteId(id); setDeleteName(name); };
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -115,67 +71,80 @@ export default function ProjectList() {
           <h1 className="text-3xl font-bold text-foreground mb-2" style={{ fontFamily: "var(--font-display)" }}>Projects</h1>
           <p className="text-muted-foreground">Manage your construction sites and client portfolios.</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+
+        <Dialog open={isDialogOpen} onOpenChange={v => { setIsDialogOpen(v); if (!v) reset(); }}>
           <DialogTrigger asChild>
             <Button className="shadow-md"><Plus className="w-5 h-5 mr-2" /> New Project</Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-[580px] max-h-[92vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-2xl" style={{ fontFamily: "var(--font-display)" }}>Create New Project</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Project Name *</label>
-                <Input {...register("name")} placeholder="e.g. Downtown Highrise" />
-                {errors.name && <p className="text-xs text-red-500">{String(errors.name.message)}</p>}
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Client *</label>
-                <Input {...register("client")} placeholder="e.g. Acme Corp" />
-                {errors.client && <p className="text-xs text-red-500">{String(errors.client.message)}</p>}
-              </div>
-
-              <AddressSearch onSelect={(lat, lng, label) => {
-                setValue("latitude", lat as any);
-                setValue("longitude", lng as any);
-                setValue("address", label);
-              }} />
-
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 mt-2">
+              {/* Basic info */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Latitude *</label>
-                  <Input type="number" step="0.0001" {...register("latitude")} placeholder="36.8190" />
-                  {errors.latitude && <p className="text-xs text-red-500">{String(errors.latitude?.message)}</p>}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Project Name *</label>
+                  <Input {...register("name")} placeholder="e.g. Downtown Highrise" />
+                  {errors.name && <p className="text-xs text-red-500">{String(errors.name.message)}</p>}
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Longitude *</label>
-                  <Input type="number" step="0.0001" {...register("longitude")} placeholder="10.1658" />
-                  {errors.longitude && <p className="text-xs text-red-500">{String(errors.longitude?.message)}</p>}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Client *</label>
+                  <Input {...register("client")} placeholder="e.g. Acme Corp" />
+                  {errors.client && <p className="text-xs text-red-500">{String(errors.client.message)}</p>}
                 </div>
               </div>
 
-              {showPreview && (
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground font-medium">Location Preview</label>
-                  <MapPreview lat={previewLat} lng={previewLng} height="160px" />
-                </div>
-              )}
+              {/* Location search — the key feature */}
+              <LocationSearch
+                onSelect={({ lat, lng, address }) => {
+                  setValue("latitude", lat as any);
+                  setValue("longitude", lng as any);
+                  setValue("address", address);
+                }}
+              />
 
-              <div className="space-y-2">
+              {/* Manual lat/lng override */}
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Or enter coordinates manually:</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Latitude</label>
+                    <Input type="number" step="0.0001" {...register("latitude")} placeholder="36.8190" />
+                    {errors.latitude && <p className="text-xs text-red-500">{String(errors.latitude?.message)}</p>}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Longitude</label>
+                    <Input type="number" step="0.0001" {...register("longitude")} placeholder="10.1658" />
+                    {errors.longitude && <p className="text-xs text-red-500">{String(errors.longitude?.message)}</p>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Budget ($)</label>
                 <Input type="number" step="0.01" {...register("budget")} placeholder="500000" />
               </div>
-              <div className="space-y-2">
+
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Description</label>
-                <textarea {...register("description")} placeholder="Project scope, key milestones, notes…" className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                <textarea
+                  {...register("description")}
+                  placeholder="Project scope, key milestones, notes…"
+                  className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
               </div>
-              <div className="space-y-2">
+
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Status</label>
                 <select {...register("status")} className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                  <option value="planned">Planned</option><option value="active">Active</option><option value="completed">Completed</option>
+                  <option value="planned">Planned</option>
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
                 </select>
               </div>
-              <Button type="submit" className="w-full mt-2" disabled={createProject.isPending}>
+
+              <Button type="submit" className="w-full" disabled={createProject.isPending}>
                 {createProject.isPending ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Create Project"}
               </Button>
             </form>
@@ -186,7 +155,11 @@ export default function ProjectList() {
       {/* Delete confirm */}
       <Dialog open={deleteId !== null} onOpenChange={v => !v && setDeleteId(null)}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle className="text-destructive flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Delete Project?</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" /> Delete Project?
+            </DialogTitle>
+          </DialogHeader>
           <p className="text-sm text-muted-foreground">This will permanently delete <strong>{deleteName}</strong> along with all its visits and documents.</p>
           <div className="flex gap-3 pt-2">
             <Button variant="outline" className="flex-1" onClick={() => setDeleteId(null)}>Cancel</Button>
@@ -197,9 +170,15 @@ export default function ProjectList() {
         </DialogContent>
       </Dialog>
 
+      {/* Search */}
       <div className="relative mb-8 max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-        <Input className="pl-10 h-12 rounded-xl bg-card border-border/50 shadow-sm" placeholder="Search projects or clients…" value={search} onChange={e => setSearch(e.target.value)} />
+        <Input
+          className="pl-10 h-12 rounded-xl bg-card border-border/50 shadow-sm"
+          placeholder="Search projects or clients…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
       </div>
 
       {isLoading ? (
@@ -214,9 +193,10 @@ export default function ProjectList() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {filtered?.map(project => (
             <div key={project.id} className="group bg-card rounded-2xl border border-border/50 shadow-sm hover:shadow-xl hover:border-primary/30 transition-all duration-300 flex flex-col relative overflow-hidden">
-              {/* Delete button */}
-              <button onClick={e => { e.stopPropagation(); e.preventDefault(); confirmDelete(project.id, project.name); }}
-                className="absolute top-4 right-4 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 bg-background/80 hover:bg-destructive hover:text-white text-muted-foreground transition-all z-10 shadow-sm">
+              <button
+                onClick={e => { e.stopPropagation(); setDeleteId(project.id); setDeleteName(project.name); }}
+                className="absolute top-4 right-4 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 bg-background/80 hover:bg-destructive hover:text-white text-muted-foreground transition-all z-10 shadow-sm"
+              >
                 <Trash2 className="w-4 h-4" />
               </button>
 
@@ -232,8 +212,8 @@ export default function ProjectList() {
                 <h3 className="text-xl font-bold text-foreground mb-1 group-hover:text-primary transition-colors" style={{ fontFamily: "var(--font-display)" }}>
                   {project.name}
                 </h3>
-                <p className="text-muted-foreground text-sm flex items-center gap-1.5 mb-2">
-                  <Building className="w-4 h-4" /> {project.client}
+                <p className="text-muted-foreground text-sm flex items-center gap-1.5 mb-1">
+                  <Building className="w-4 h-4 shrink-0" /> {project.client}
                 </p>
                 {project.address && (
                   <p className="text-xs text-muted-foreground flex items-center gap-1 mb-2 truncate">
@@ -241,7 +221,7 @@ export default function ProjectList() {
                   </p>
                 )}
                 {project.description && (
-                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-4">{project.description}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-3">{project.description}</p>
                 )}
                 <div className="mt-auto pt-4 border-t border-border/50 flex justify-between items-center text-sm text-muted-foreground">
                   <span className="text-xs">{format(new Date(project.createdAt!), "MMM yyyy")}</span>

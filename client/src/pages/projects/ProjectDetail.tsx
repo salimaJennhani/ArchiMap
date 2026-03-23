@@ -10,6 +10,7 @@ import {
   Loader2, Plus, ArrowLeft, Upload, File, ImageIcon,
   FileWarning, Pencil, Trash2, AlertTriangle,
 } from "lucide-react";
+import { LocationSearch } from "@/components/location/LocationSearch";
 import { format, isFuture, isToday } from "date-fns";
 import { Link, useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -212,64 +213,62 @@ function EditProjectDialog({ open, onClose, project, onSave }: any) {
     },
   });
 
-  const [searching, setSearching] = useState(false);
-  const [addrQuery, setAddrQuery] = useState(project.address || "");
-  const [results, setResults] = useState<any[]>([]);
-
-  const searchAddress = async () => {
-    if (!addrQuery.trim()) return;
-    setSearching(true);
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addrQuery)}&format=json&limit=5`, { headers: { "Accept-Language": "en" } });
-      setResults(await res.json());
-    } catch { setResults([]); } finally { setSearching(false); }
-  };
-
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[540px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[560px] max-h-[92vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Edit Project</DialogTitle></DialogHeader>
-        <form onSubmit={handleSubmit(onSave)} className="space-y-4 pt-2">
-          <div><label className="text-sm font-medium mb-1 block">Project Name</label><Input {...register("name", { required: true })} /></div>
-          <div><label className="text-sm font-medium mb-1 block">Client</label><Input {...register("client", { required: true })} /></div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Address / Location</label>
-            <div className="flex gap-2">
-              <Input value={addrQuery} onChange={e => setAddrQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && (e.preventDefault(), searchAddress())} placeholder="Search for location…" />
-              <Button type="button" variant="secondary" onClick={searchAddress} disabled={searching} className="shrink-0">
-                {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
-              </Button>
-            </div>
-            {results.length > 0 && (
-              <div className="border border-border rounded-lg overflow-hidden shadow-md bg-background">
-                {results.map((r, i) => (
-                  <button key={i} type="button" onClick={() => {
-                    setValue("latitude", r.lat); setValue("longitude", r.lon);
-                    setValue("address", r.display_name);
-                    setAddrQuery(r.display_name.split(",").slice(0, 2).join(","));
-                    setResults([]);
-                  }} className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b border-border/50 last:border-0 truncate">
-                    <MapPin className="w-3 h-3 inline mr-1 text-primary" />{r.display_name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
+        <form onSubmit={handleSubmit(onSave)} className="space-y-5 pt-2">
           <div className="grid grid-cols-2 gap-4">
-            <div><label className="text-sm font-medium mb-1 block">Latitude</label><Input type="number" step="0.0001" {...register("latitude")} /></div>
-            <div><label className="text-sm font-medium mb-1 block">Longitude</label><Input type="number" step="0.0001" {...register("longitude")} /></div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Project Name</label>
+              <Input {...register("name", { required: true })} />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Client</label>
+              <Input {...register("client", { required: true })} />
+            </div>
           </div>
-          <div><label className="text-sm font-medium mb-1 block">Budget ($)</label><Input type="number" step="0.01" {...register("budget")} /></div>
+
+          {/* Location search with live propositions */}
+          <LocationSearch
+            defaultLat={parseFloat(String(project.latitude))}
+            defaultLng={parseFloat(String(project.longitude))}
+            defaultAddress={project.address || ""}
+            onSelect={({ lat, lng, address }) => {
+              setValue("latitude", lat);
+              setValue("longitude", lng);
+              setValue("address", address);
+            }}
+          />
+
           <div>
-            <label className="text-sm font-medium mb-1 block">Description</label>
+            <p className="text-xs font-medium text-muted-foreground mb-2">Or update coordinates manually:</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Latitude</label>
+                <Input type="number" step="0.0001" {...register("latitude")} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Longitude</label>
+                <Input type="number" step="0.0001" {...register("longitude")} />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Budget ($)</label>
+            <Input type="number" step="0.01" {...register("budget")} />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Description</label>
             <textarea {...register("description")} className="w-full min-h-[70px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
           </div>
           <div>
-            <label className="text-sm font-medium mb-1 block">Status</label>
+            <label className="text-sm font-medium mb-1.5 block">Status</label>
             <select {...register("status")} className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm">
-              <option value="planned">Planned</option><option value="active">Active</option><option value="completed">Completed</option>
+              <option value="planned">Planned</option>
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
             </select>
           </div>
           <div className="flex gap-3 pt-2">

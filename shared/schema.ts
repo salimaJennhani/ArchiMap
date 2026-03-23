@@ -71,10 +71,25 @@ export type Document = typeof documents.$inferSelect;
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 export type CreateDocumentRequest = InsertDocument;
 
+export interface VisitWithProject extends Visit {
+  projectName: string;
+  projectClient: string;
+  projectAddress: string | null;
+  projectStatus: string;
+}
+
+export interface DocumentWithProject extends Document {
+  projectName: string;
+  projectClient: string;
+}
+
 export interface DashboardStats {
   totalProjects: number;
   activeProjects: number;
   upcomingVisits: number;
+  totalVisits: number;
+  visitsThisMonth: number;
+  totalIssues: number;
 }
 
 export interface UpcomingVisit {

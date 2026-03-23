@@ -5,6 +5,7 @@ import {
   type CreateVisitRequest, type UpdateVisitRequest, type Visit,
   type CreateDocumentRequest, type Document,
   type DashboardStats, type UpcomingVisit,
+  type VisitWithProject, type DocumentWithProject,
 } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
 
@@ -16,12 +17,14 @@ export interface IStorage {
   deleteProject(id: number, userId: string): Promise<void>;
 
   getVisits(projectId: number): Promise<Visit[]>;
+  getAllVisitsWithProject(userId: string): Promise<VisitWithProject[]>;
   getUpcomingVisits(userId: string): Promise<UpcomingVisit[]>;
   createVisit(projectId: number, visit: Omit<CreateVisitRequest, "projectId">): Promise<Visit>;
   updateVisit(id: number, updates: Omit<UpdateVisitRequest, "projectId">): Promise<Visit | undefined>;
   deleteVisit(id: number): Promise<void>;
 
   getDocuments(projectId: number): Promise<Document[]>;
+  getAllDocumentsWithProject(userId: string): Promise<DocumentWithProject[]>;
   createDocument(projectId: number, document: Omit<CreateDocumentRequest, "projectId">): Promise<Document>;
   deleteDocument(id: number): Promise<void>;
 
@@ -49,7 +52,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProject(id: number, userId: string): Promise<void> {
-    // cascade delete visits and documents first
     const projectVisits = await db.select().from(visits).where(eq(visits.projectId, id));
     const projectDocs = await db.select().from(documents).where(eq(documents.projectId, id));
     for (const v of projectVisits) await db.delete(visits).where(eq(visits.id, v.id));
@@ -59,6 +61,24 @@ export class DatabaseStorage implements IStorage {
 
   async getVisits(projectId: number): Promise<Visit[]> {
     return await db.select().from(visits).where(eq(visits.projectId, projectId));
+  }
+
+  async getAllVisitsWithProject(userId: string): Promise<VisitWithProject[]> {
+    const userProjects = await this.getProjects(userId);
+    const result: VisitWithProject[] = [];
+    for (const p of userProjects) {
+      const pVisits = await db.select().from(visits).where(eq(visits.projectId, p.id));
+      for (const v of pVisits) {
+        result.push({
+          ...v,
+          projectName: p.name,
+          projectClient: p.client,
+          projectAddress: p.address ?? null,
+          projectStatus: p.status,
+        });
+      }
+    }
+    return result.sort((a, b) => String(b.visitDate).localeCompare(String(a.visitDate)));
   }
 
   async getUpcomingVisits(userId: string): Promise<UpcomingVisit[]> {
@@ -101,6 +121,22 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(documents).where(eq(documents.projectId, projectId));
   }
 
+  async getAllDocumentsWithProject(userId: string): Promise<DocumentWithProject[]> {
+    const userProjects = await this.getProjects(userId);
+    const result: DocumentWithProject[] = [];
+    for (const p of userProjects) {
+      const pDocs = await db.select().from(documents).where(eq(documents.projectId, p.id));
+      for (const d of pDocs) {
+        result.push({
+          ...d,
+          projectName: p.name,
+          projectClient: p.client,
+        });
+      }
+    }
+    return result.sort((a, b) => new Date(b.uploadDate!).getTime() - new Date(a.uploadDate!).getTime());
+  }
+
   async createDocument(projectId: number, documentData: Omit<CreateDocumentRequest, "projectId">): Promise<Document> {
     const [newDoc] = await db.insert(documents).values({ ...documentData, projectId }).returning();
     return newDoc;
@@ -114,10 +150,20 @@ export class DatabaseStorage implements IStorage {
     const userProjects = await this.getProjects(userId);
     const activeProjects = userProjects.filter(p => p.status === "active").length;
     const upcoming = await this.getUpcomingVisits(userId);
+    const allVisits = await this.getAllVisitsWithProject(userId);
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+    const visitsThisMonth = allVisits.filter(v => String(v.visitDate) >= monthStart).length;
+    const totalIssues = allVisits.filter(v => v.detectedIssues && v.detectedIssues.trim().length > 0).length;
+
     return {
       totalProjects: userProjects.length,
       activeProjects,
       upcomingVisits: upcoming.length,
+      totalVisits: allVisits.length,
+      visitsThisMonth,
+      totalIssues,
     };
   }
 }

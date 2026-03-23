@@ -96,6 +96,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.getUpcomingVisits(req.user.claims.sub));
   });
 
+  // Global visits list (all projects, joined)
+  app.get("/api/visits", auth, async (req: any, res) => {
+    res.json(await storage.getAllVisitsWithProject(req.user.claims.sub));
+  });
+
   app.get(api.visits.list.path, auth, async (req: any, res) => {
     const project = await storage.getProject(Number(req.params.projectId), req.user.claims.sub);
     if (!project) return res.status(404).json({ message: "Project not found" });
@@ -132,6 +137,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── Documents ──────────────────────────────────────────────────────────────
+  // Global documents list (all projects, joined)
+  app.get("/api/documents", auth, async (req: any, res) => {
+    res.json(await storage.getAllDocumentsWithProject(req.user.claims.sub));
+  });
+
   app.get(api.documents.list.path, auth, async (req: any, res) => {
     const project = await storage.getProject(Number(req.params.projectId), req.user.claims.sub);
     if (!project) return res.status(404).json({ message: "Project not found" });

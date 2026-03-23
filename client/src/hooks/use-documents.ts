@@ -17,7 +17,7 @@ export function useDocuments(projectId: number) {
 export function useCreateDocument() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ projectId, data }: { projectId: number, data: CreateDocumentRequest }) => {
+    mutationFn: async ({ projectId, data }: { projectId: number; data: CreateDocumentRequest }) => {
       const url = buildUrl(api.documents.create.path, { projectId });
       const res = await fetch(url, {
         method: api.documents.create.method,
@@ -27,6 +27,19 @@ export function useCreateDocument() {
       });
       if (!res.ok) throw new Error("Failed to create document");
       return api.documents.create.responses[201].parse(await res.json());
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.documents.list.path, variables.projectId] });
+    },
+  });
+}
+
+export function useDeleteDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, projectId }: { id: number; projectId: number }) => {
+      const res = await fetch(`/api/documents/${id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error("Failed to delete document");
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.documents.list.path, variables.projectId] });

@@ -1,7 +1,10 @@
 import { useAuth } from "@/hooks/use-auth";
 import { Redirect } from "wouter";
-import { Building2, ArrowRight, ShieldCheck, Zap, Layers } from "lucide-react";
+import { Building2, ShieldCheck, Zap, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function Login() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -79,21 +82,93 @@ export default function Login() {
             </p>
           </div>
 
-          <div className="bg-card p-8 rounded-3xl shadow-xl shadow-black/5 border border-border/50">
-            <Button 
-              className="w-full h-14 text-lg font-semibold rounded-xl bg-foreground text-background hover:bg-foreground/90 transition-all hover:scale-[1.02] shadow-lg flex items-center justify-center gap-2"
-              onClick={() => window.location.href = "/api/login"}
-            >
-              Continue with Replit
-              <ArrowRight className="w-5 h-5" />
-            </Button>
-            
-            <p className="text-center text-sm text-muted-foreground mt-6">
-              By continuing, you agree to our Terms of Service and Privacy Policy.
-            </p>
-          </div>
+          <AuthForm />
         </div>
       </div>
+    </div>
+  );
+}
+
+function AuthForm() {
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
+
+    try {
+      const endpoint = isLogin ? "/auth/login" : "/auth/register";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Authentication failed");
+      } else {
+        window.location.href = "/";
+      }
+    } catch (err) {
+      setError("An error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-card p-8 rounded-3xl shadow-xl shadow-black/5 border border-border/50 space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <Label htmlFor="email" className="text-sm font-medium">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="mt-2 rounded-lg h-11"
+          />
+        </div>
+        <div>
+          <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+          <Input
+            id="password"
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="mt-2 rounded-lg h-11"
+          />
+        </div>
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+        <Button
+          type="submit"
+          disabled={isLoading}
+          className="w-full h-11 text-base font-semibold rounded-xl bg-foreground text-background hover:bg-foreground/90 transition-all"
+        >
+          {isLoading ? "Loading..." : (isLogin ? "Sign In" : "Create Account")}
+        </Button>
+      </form>
+      <button
+        type="button"
+        onClick={() => {
+          setIsLogin(!isLogin);
+          setError("");
+        }}
+        className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+      </button>
     </div>
   );
 }

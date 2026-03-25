@@ -1,10 +1,24 @@
-import { pgTable, text, serial, integer, timestamp, numeric, date } from "drizzle-orm/pg-core";
+import { pgTable, text,uuid, serial, integer, timestamp, numeric, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { users } from "./models/auth";
-import { relations } from "drizzle-orm";
+import { sql, relations } from "drizzle-orm";
+// import { pgTable, text, uuid } from "drizzle-orm/pg-core";
 
-export * from "./models/auth";
+// Table users pour auth locale
+export const users = pgTable("users", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").unique(),
+  password: text("password"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  profileImageUrl: text("profile_image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Les autres tables restent inchangées
+
+// export * from "./models/auth";
 
 export const projects = pgTable("projects", {
   id: serial("id").primaryKey(),

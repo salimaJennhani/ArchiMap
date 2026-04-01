@@ -10,7 +10,7 @@ import {
   Loader2, Plus, ArrowLeft, Upload, File, ImageIcon,
   FileWarning, Pencil, Trash2, AlertTriangle,
 } from "lucide-react";
-import { LocationSearch } from "@/components/location/LocationSearch";
+import { LocationAutocomplete } from "@/components/location/LocationAutocomplete";
 import { format, isFuture, isToday } from "date-fns";
 import { Link, useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -118,7 +118,7 @@ export default function ProjectDetail() {
       </div>
 
       {/* Edit Dialog */}
-      <EditProjectDialog open={editOpen} onClose={() => setEditOpen(false)} project={project} onSave={async (data) => {
+      <EditProjectDialog open={editOpen} onClose={() => setEditOpen(false)} project={project} onSave={async (data: any) => {
         await updateProject.mutateAsync({ id: project.id, ...data });
         setEditOpen(false);
         toast({ title: "Project updated" });
@@ -230,15 +230,19 @@ function EditProjectDialog({ open, onClose, project, onSave }: any) {
           </div>
 
           {/* Location search with live propositions */}
-          <LocationSearch
-            defaultLat={parseFloat(String(project.latitude))}
-            defaultLng={parseFloat(String(project.longitude))}
-            defaultAddress={project.address || ""}
-            onSelect={({ lat, lng, address }) => {
-              setValue("latitude", lat);
-              setValue("longitude", lng);
-              setValue("address", address);
+          <LocationAutocomplete
+            value={{
+              lat: parseFloat(String(project.latitude)),
+              lng: parseFloat(String(project.longitude)),
+              address: project.address || `${parseFloat(String(project.latitude))}, ${parseFloat(String(project.longitude))}`,
             }}
+            onChange={(loc) => {
+              if (!loc) return;
+              setValue("latitude", loc.lat, { shouldDirty: true, shouldValidate: true });
+              setValue("longitude", loc.lng, { shouldDirty: true, shouldValidate: true });
+              setValue("address", loc.address, { shouldDirty: true, shouldValidate: true });
+            }}
+            error={errors?.latitude || errors?.longitude ? "Please select a valid location from the suggestions." : undefined}
           />
 
           <div>

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type CreateDocumentRequest } from "@shared/routes";
+import { api, buildUrl } from "@shared/routes";
+import type { CreateDocumentRequest } from "@shared/schema";
 
 export function useDocuments(projectId: number) {
   return useQuery({
@@ -17,7 +18,7 @@ export function useDocuments(projectId: number) {
 export function useCreateDocument() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ projectId, data }: { projectId: number; data: CreateDocumentRequest }) => {
+    mutationFn: async ({ projectId, data }: { projectId: number; data: Omit<CreateDocumentRequest, "projectId"> }) => {
       const url = buildUrl(api.documents.create.path, { projectId });
       const res = await fetch(url, {
         method: api.documents.create.method,

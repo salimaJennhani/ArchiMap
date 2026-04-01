@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type CreateVisitRequest } from "@shared/routes";
+import { api, buildUrl } from "@shared/routes";
+import type { CreateVisitRequest } from "@shared/schema";
 
 export function useVisits(projectId: number) {
   return useQuery({

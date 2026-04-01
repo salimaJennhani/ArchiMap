@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type Project, type CreateProjectRequest, type UpdateProjectRequest } from "@shared/routes";
+import { api, buildUrl } from "@shared/routes";
+import type { Project, CreateProjectRequest, UpdateProjectRequest } from "@shared/schema";
 
 export function useProjects() {
   return useQuery({

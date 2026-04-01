@@ -44,6 +44,8 @@ export function registerAuthRoutes(app: Express) {
     const { email, password } = req.body;
     const user = await db.select().from(users).where(eq(users.email, email)).then(r => r[0]);
     if (!user) return res.status(400).json({ error: "User not found" });
+    if (!user.id || !user.email) return res.status(500).json({ error: "Invalid user record" });
+    if (!user.password) return res.status(500).json({ error: "Invalid user record" });
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(400).json({ error: "Wrong password" });
@@ -96,6 +98,76 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   setupSession(app);
   registerAuthRoutes(app);
   const auth = isAuthenticated;
+
+  // ─── Geocoding proxy (Nominatim) ────────────────────────────────────
+  app.get("/api/geocode", auth, async (req: any, res) => {
+    const q = String(req.query.q || "").trim();
+    // Tunisia-only app: keep results inside Tunisia by default.
+    const countryCodes = req.query.countrycodes ? String(req.query.countrycodes) : "tn";
+    if (!q) return res.status(400).json({ message: "Missing q" });
+
+    const params = new URLSearchParams({
+      q,
+      format: "jsonv2",
+      limit: "8",
+      addressdetails: "1",
+      dedupe: "1",
+    });
+    if (countryCodes) params.set("countrycodes", countryCodes);
+    // Tunisia bounding box to reduce “close-but-not-exact” matches.
+    // viewbox = left,top,right,bottom (lon,lat,lon,lat)
+    params.set("viewbox", "7.524,37.6,11.6,30.2");
+    params.set("bounded", "1");
+
+    const url = `https://nominatim.openstreetmap.org/search?${params}`;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const r = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          "Accept-Language": "fr,en",
+          // Nominatim strongly prefers identifiable clients; set on server side.
+          "User-Agent": process.env.NOMINATIM_USER_AGENT || "Asset-Manager/1.0",
+        },
+      }).finally(() => clearTimeout(timeout));
+      if (!r.ok) return res.status(502).json({ message: "Geocode failed" });
+      res.json(await r.json());
+    } catch {
+      res.status(502).json({ message: "Geocode failed" });
+    }
+  });
+
+  // ─── Reverse geocoding proxy (Nominatim) ────────────────────────────
+  app.get("/api/reverse", auth, async (req: any, res) => {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ message: "Missing lat/lon" });
+
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lon: String(lon),
+      format: "jsonv2",
+      addressdetails: "1",
+    });
+
+    const url = `https://nominatim.openstreetmap.org/reverse?${params}`;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const r = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          "Accept-Language": "fr,en",
+          "User-Agent": process.env.NOMINATIM_USER_AGENT || "Asset-Manager/1.0",
+        },
+      }).finally(() => clearTimeout(timeout));
+      if (!r.ok) return res.status(502).json({ message: "Reverse geocode failed" });
+      res.json(await r.json());
+    } catch {
+      res.status(502).json({ message: "Reverse geocode failed" });
+    }
+  });
 
   // Serve uploaded files
   app.get("/uploads/:filename", (req, res) => {

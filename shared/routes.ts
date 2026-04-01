@@ -109,6 +109,9 @@ export const api = {
           totalProjects: z.number(),
           activeProjects: z.number(),
           upcomingVisits: z.number(),
+          totalVisits: z.number(),
+          visitsThisMonth: z.number(),
+          totalIssues: z.number(),
         })
       }
     }

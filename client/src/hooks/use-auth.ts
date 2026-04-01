@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 interface User {
   id: string;
   email: string;
+  firstName?: string | null;
+  lastName?: string | null;
 }
 
 async function fetchUser(): Promise<User | null> {

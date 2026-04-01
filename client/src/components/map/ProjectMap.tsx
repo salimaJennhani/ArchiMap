@@ -3,14 +3,10 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { type Project } from '@shared/schema';
 import { Link } from 'wouter';
+import { parseLatLng } from '@/lib/map/coords';
+import { initLeafletDefaultIcon } from '@/lib/map/leaflet';
 
-// Fix Leaflet's default icon paths in React
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+initLeafletDefaultIcon();
 
 const createCustomIcon = (status: string) => {
   const color = status === 'active' ? '#22c55e' : status === 'completed' ? '#3b82f6' : '#f59e0b';
@@ -32,11 +28,15 @@ const previewIcon = L.divIcon({
 function MapBounds({ projects }: { projects: Project[] }) {
   const map = useMap();
   useEffect(() => {
-    if (projects.length > 0) {
-      if (projects.length === 1) {
-        map.setView([Number(projects[0].latitude), Number(projects[0].longitude)], 13);
+    const coords = projects
+      .map(p => ({ p, ll: parseLatLng(p.latitude, p.longitude) }))
+      .filter((x): x is { p: Project; ll: { lat: number; lng: number } } => x.ll !== null);
+
+    if (coords.length > 0) {
+      if (coords.length === 1) {
+        map.setView([coords[0].ll.lat, coords[0].ll.lng], 13);
       } else {
-        const bounds = L.latLngBounds(projects.map(p => [Number(p.latitude), Number(p.longitude)]));
+        const bounds = L.latLngBounds(coords.map(({ ll }) => [ll.lat, ll.lng]));
         map.fitBounds(bounds, { padding: [50, 50] });
       }
     }
@@ -47,7 +47,7 @@ function MapBounds({ projects }: { projects: Project[] }) {
 function MoveTo({ lat, lng }: { lat: number; lng: number }) {
   const map = useMap();
   useEffect(() => {
-    if (lat && lng) map.setView([lat, lng], 14);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) map.setView([lat, lng], 14);
   }, [lat, lng, map]);
   return null;
 }
@@ -59,19 +59,22 @@ interface ProjectMapProps {
 }
 
 export function ProjectMap({ projects, height = "400px", interactive = true }: ProjectMapProps) {
-  const defaultCenter: [number, number] = [48.8566, 2.3522]; // Paris default
-  const center = projects.length > 0
-    ? [Number(projects[0].latitude), Number(projects[0].longitude)] as [number, number]
-    : defaultCenter;
+  const defaultCenter: [number, number] = [36.8065, 10.1815]; // Tunis default
+  const tunisiaBounds: [[number, number], [number, number]] = [[30.2, 7.524], [37.6, 11.6]];
+  const validProjects = projects.filter(p => parseLatLng(p.latitude, p.longitude) !== null);
+  const first = validProjects[0] ? parseLatLng(validProjects[0].latitude, validProjects[0].longitude) : null;
+  const center = first ? ([first.lat, first.lng] as [number, number]) : defaultCenter;
 
   return (
     <div className="rounded-2xl overflow-hidden shadow-lg border border-border/50 relative z-0" style={{ height }}>
       <MapContainer
         center={center}
-        zoom={projects.length === 1 ? 14 : 4}
+        zoom={validProjects.length === 1 ? 14 : 6}
         scrollWheelZoom={interactive}
         dragging={interactive}
         zoomControl={interactive}
+        maxBounds={tunisiaBounds}
+        maxBoundsViscosity={0.8}
         style={{ height: '100%', width: '100%' }}
       >
         <TileLayer
@@ -79,28 +82,32 @@ export function ProjectMap({ projects, height = "400px", interactive = true }: P
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
 
-        {projects.length > 1 && <MapBounds projects={projects} />}
+        {validProjects.length > 1 && <MapBounds projects={validProjects} />}
 
-        {projects.map((project) => (
-          <Marker
-            key={project.id}
-            position={[Number(project.latitude), Number(project.longitude)]}
-            icon={createCustomIcon(project.status)}
-          >
-            <Popup>
-              <div className="p-1 min-w-[180px]">
-                <h3 className="font-bold text-sm mb-1">{project.name}</h3>
-                <p className="text-xs text-gray-500 mb-2">{project.client}</p>
-                <Link
-                  href={`/projects/${project.id}`}
-                  className="block w-full text-center bg-blue-600 text-white py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors"
-                >
-                  View Details
-                </Link>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+        {validProjects.map((project) => {
+          const ll = parseLatLng(project.latitude, project.longitude);
+          if (!ll) return null;
+          return (
+            <Marker
+              key={project.id}
+              position={[ll.lat, ll.lng]}
+              icon={createCustomIcon(project.status)}
+            >
+              <Popup>
+                <div className="p-1 min-w-[180px]">
+                  <h3 className="font-bold text-sm mb-1">{project.name}</h3>
+                  <p className="text-xs text-gray-500 mb-2">{project.client}</p>
+                  <Link
+                    href={`/projects/${project.id}`}
+                    className="block w-full text-center bg-blue-600 text-white py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    View Details
+                  </Link>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
       </MapContainer>
     </div>
   );
@@ -108,7 +115,7 @@ export function ProjectMap({ projects, height = "400px", interactive = true }: P
 
 /** Lightweight map preview used in forms – shows a single draggable pin */
 export function MapPreview({ lat, lng, height = "200px" }: { lat: number; lng: number; height?: string }) {
-  if (!lat || !lng || isNaN(lat) || isNaN(lng)) return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   return (
     <div className="rounded-xl overflow-hidden border border-border/50 relative z-0" style={{ height }}>
       <MapContainer

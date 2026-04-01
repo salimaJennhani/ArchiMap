@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { format } from "date-fns";
-import { useForm, useWatch, Controller } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { insertProjectSchema } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
-import { LocationSearch } from "@/components/location/LocationSearch";
+import { LocationAutocomplete } from "@/components/location/LocationAutocomplete";
 
 const formSchema = insertProjectSchema.extend({
   latitude: z.union([z.string(), z.number()]).transform(v => Number(v)).pipe(z.number().min(-90).max(90)),
@@ -37,14 +37,34 @@ export default function ProjectList() {
     resolver: zodResolver(formSchema),
     defaultValues: { status: "planned" },
   });
+  const watchedLat = useWatch({ control, name: "latitude" });
+  const watchedLng = useWatch({ control, name: "longitude" });
+  const watchedAddress = useWatch({ control, name: "address" });
+  const currentLocationValue =
+    typeof watchedLat === "number" &&
+    typeof watchedLng === "number" &&
+    Number.isFinite(watchedLat) &&
+    Number.isFinite(watchedLng) &&
+    typeof watchedAddress === "string" &&
+    watchedAddress.trim().length > 0
+      ? { lat: watchedLat, lng: watchedLng, address: watchedAddress }
+      : null;
 
   const onSubmit = (data: FormValues) => {
-    createProject.mutate(data, {
+    createProject.mutate(
+      {
+        ...data,
+        latitude: String(data.latitude),
+        longitude: String(data.longitude),
+        budget: data.budget !== undefined ? String(data.budget) : undefined,
+      } as any,
+      {
       onSuccess: () => {
         setIsDialogOpen(false);
         reset();
       },
-    });
+      }
+    );
   };
 
   const handleDelete = async () => {
@@ -96,29 +116,28 @@ export default function ProjectList() {
               </div>
 
               {/* Location search — the key feature */}
-              <LocationSearch
-                onSelect={({ lat, lng, address }) => {
-                  setValue("latitude", lat as any);
-                  setValue("longitude", lng as any);
-                  setValue("address", address);
+              <LocationAutocomplete
+                value={currentLocationValue}
+                onChange={(loc) => {
+                  if (!loc) {
+                    setValue("address", "", { shouldDirty: true, shouldValidate: true });
+                    return;
+                  }
+                  setValue("latitude", loc.lat as any, { shouldDirty: true, shouldValidate: true });
+                  setValue("longitude", loc.lng as any, { shouldDirty: true, shouldValidate: true });
+                  setValue("address", loc.address, { shouldDirty: true, shouldValidate: true });
                 }}
+                error={
+                  errors.latitude || errors.longitude
+                    ? "Please select a valid location from the suggestions."
+                    : undefined
+                }
               />
 
               {/* Manual lat/lng override */}
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Or enter coordinates manually:</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Latitude</label>
-                    <Input type="number" step="0.0001" {...register("latitude")} placeholder="36.8190" />
-                    {errors.latitude && <p className="text-xs text-red-500">{String(errors.latitude?.message)}</p>}
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Longitude</label>
-                    <Input type="number" step="0.0001" {...register("longitude")} placeholder="10.1658" />
-                    {errors.longitude && <p className="text-xs text-red-500">{String(errors.longitude?.message)}</p>}
-                  </div>
-                </div>
+              <div className="hidden">
+                <Input type="number" step="0.0001" {...register("latitude")} />
+                <Input type="number" step="0.0001" {...register("longitude")} />
               </div>
 
               <div className="space-y-1.5">

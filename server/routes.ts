@@ -100,7 +100,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const auth = isAuthenticated;
 
   // ─── Geocoding proxy (Nominatim) ────────────────────────────────────
-  app.get("/api/geocode", auth, async (req: any, res) => {
+  // Intentionally NOT behind auth: it powers autocomplete UX.
+  app.get("/api/geocode", async (req: any, res) => {
     const q = String(req.query.q || "").trim();
     // Tunisia-only app: keep results inside Tunisia by default.
     const countryCodes = req.query.countrycodes ? String(req.query.countrycodes) : "tn";
@@ -139,7 +140,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── Reverse geocoding proxy (Nominatim) ────────────────────────────
-  app.get("/api/reverse", auth, async (req: any, res) => {
+  // Intentionally NOT behind auth: it powers "use my location".
+  app.get("/api/reverse", async (req: any, res) => {
     const lat = Number(req.query.lat);
     const lon = Number(req.query.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ message: "Missing lat/lon" });

@@ -40,31 +40,42 @@ export default function ProjectList() {
   const watchedLat = useWatch({ control, name: "latitude" });
   const watchedLng = useWatch({ control, name: "longitude" });
   const watchedAddress = useWatch({ control, name: "address" });
+  const latNum = typeof watchedLat === "number" ? watchedLat : Number(watchedLat);
+  const lngNum = typeof watchedLng === "number" ? watchedLng : Number(watchedLng);
   const currentLocationValue =
-    typeof watchedLat === "number" &&
-    typeof watchedLng === "number" &&
-    Number.isFinite(watchedLat) &&
-    Number.isFinite(watchedLng) &&
+    Number.isFinite(latNum) &&
+    Number.isFinite(lngNum) &&
     typeof watchedAddress === "string" &&
     watchedAddress.trim().length > 0
-      ? { lat: watchedLat, lng: watchedLng, address: watchedAddress }
+      ? { lat: latNum, lng: lngNum, address: watchedAddress }
       : null;
+  const isLocationValid = !!currentLocationValue;
 
-  const onSubmit = (data: FormValues) => {
-    createProject.mutate(
-      {
+  const onSubmit = async (data: FormValues) => {
+    try {
+      toast({ title: "Creating project…" });
+      await createProject.mutateAsync({
         ...data,
         latitude: String(data.latitude),
         longitude: String(data.longitude),
         budget: data.budget !== undefined ? String(data.budget) : undefined,
-      } as any,
-      {
-      onSuccess: () => {
-        setIsDialogOpen(false);
-        reset();
-      },
-      }
-    );
+      } as any);
+      toast({ title: "Project created" });
+      setIsDialogOpen(false);
+      reset();
+    } catch (e: any) {
+      const message = e instanceof Error ? e.message : "Failed to create project";
+      console.error("Create project failed", e);
+      toast({ title: "Create failed", description: message, variant: "destructive" });
+    }
+  };
+
+  const onInvalid = () => {
+    toast({
+      title: "Check the form",
+      description: "Please fill required fields and select a valid location.",
+      variant: "destructive",
+    });
   };
 
   const handleDelete = async () => {
@@ -100,7 +111,7 @@ export default function ProjectList() {
             <DialogHeader>
               <DialogTitle className="text-2xl" style={{ fontFamily: "var(--font-display)" }}>Create New Project</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 mt-2">
+            <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-5 mt-2">
               {/* Basic info */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
@@ -120,6 +131,8 @@ export default function ProjectList() {
                 value={currentLocationValue}
                 onChange={(loc) => {
                   if (!loc) {
+                    setValue("latitude", undefined as any, { shouldDirty: true, shouldValidate: true });
+                    setValue("longitude", undefined as any, { shouldDirty: true, shouldValidate: true });
                     setValue("address", "", { shouldDirty: true, shouldValidate: true });
                     return;
                   }
@@ -136,8 +149,9 @@ export default function ProjectList() {
 
               {/* Manual lat/lng override */}
               <div className="hidden">
-                <Input type="number" step="0.0001" {...register("latitude")} />
-                <Input type="number" step="0.0001" {...register("longitude")} />
+                <Input type="number" step="0.0001" {...register("latitude", { valueAsNumber: true })} />
+                <Input type="number" step="0.0001" {...register("longitude", { valueAsNumber: true })} />
+                <Input type="text" {...register("address")} />
               </div>
 
               <div className="space-y-1.5">
@@ -163,9 +177,19 @@ export default function ProjectList() {
                 </select>
               </div>
 
-              <Button type="submit" className="w-full" disabled={createProject.isPending}>
+              <Button
+                type="button"
+                className="w-full"
+                disabled={createProject.isPending || !isLocationValid}
+                onClick={handleSubmit(onSubmit, onInvalid)}
+              >
                 {createProject.isPending ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Create Project"}
               </Button>
+              {!isLocationValid && (
+                <p className="text-xs text-red-500 text-center">
+                  Please select a location from suggestions (or use the location button) before creating the project.
+                </p>
+              )}
             </form>
           </DialogContent>
         </Dialog>

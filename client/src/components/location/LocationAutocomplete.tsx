@@ -18,17 +18,61 @@ type NominatimResult = {
 
 async function geocodeTunisia(query: string): Promise<NominatimResult[]> {
   const params = new URLSearchParams({ q: query, countrycodes: "tn" });
-  const res = await fetch(`/api/geocode?${params}`, { credentials: "include" });
-  if (!res.ok) throw new Error("Geocode failed");
-  return res.json();
+  let proxyError: string | null = null;
+
+  // Prefer server proxy (stable headers/timeouts), but fall back to direct Nominatim
+  // so autocomplete still works if the session/proxy is unavailable.
+  try {
+    const res = await fetch(`/api/geocode?${params}`, { credentials: "include" });
+    if (res.ok) return res.json();
+    proxyError = `proxy ${res.status}`;
+  } catch {
+    // fall through
+    proxyError = "proxy network error";
+  }
+
+  const directParams = new URLSearchParams({
+    q: query,
+    format: "jsonv2",
+    limit: "8",
+    addressdetails: "1",
+    countrycodes: "tn",
+    dedupe: "1",
+    viewbox: "7.524,37.6,11.6,30.2",
+    bounded: "1",
+  });
+
+  const direct = await fetch(`https://nominatim.openstreetmap.org/search?${directParams}`, {
+    headers: { "Accept-Language": "fr,en" },
+  });
+  if (!direct.ok) throw new Error(`Geocode failed (${proxyError ?? "proxy unknown"}, direct ${direct.status})`);
+  return direct.json();
 }
 
 async function reverseGeocode(lat: number, lng: number): Promise<{ display_name?: string } | null> {
-  const res = await fetch(`/api/reverse?lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lng))}`, {
-    credentials: "include",
+  const url = `/api/reverse?lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lng))}`;
+  try {
+    const res = await fetch(url, { credentials: "include" });
+    if (res.ok) return res.json();
+  } catch {
+    // fall through
+  }
+
+  const directParams = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lng),
+    format: "jsonv2",
+    addressdetails: "1",
   });
-  if (!res.ok) return null;
-  return res.json();
+  try {
+    const direct = await fetch(`https://nominatim.openstreetmap.org/reverse?${directParams}`, {
+      headers: { "Accept-Language": "fr,en" },
+    });
+    if (!direct.ok) return null;
+    return direct.json();
+  } catch {
+    return null;
+  }
 }
 
 export function LocationAutocomplete({
@@ -92,6 +136,13 @@ export function LocationAutocomplete({
       return;
     }
 
+    // Avoid rate limits + improve relevance: wait for a few characters.
+    if (trimmed.length < 3) {
+      setResults([]);
+      setOpen(true);
+      return;
+    }
+
     // If the user types after selecting, we consider it a new search until they pick again.
     if (value) onChange(null);
 
@@ -107,11 +158,11 @@ export function LocationAutocomplete({
       } catch {
         if (reqId !== reqIdRef.current) return;
         setResults([]);
-        setLocalError("Couldn’t fetch suggestions. Please try again.");
+        setLocalError("Couldn’t fetch suggestions. If you just updated the server, restart `npm run dev` and try again.");
       } finally {
         if (reqId === reqIdRef.current) setLoading(false);
       }
-    }, 120);
+    }, 250);
   }, [onChange, value]);
 
   const selectResult = async (r: NominatimResult) => {
@@ -201,11 +252,15 @@ export function LocationAutocomplete({
           </Button>
         </div>
 
-        {open && (loading || results.length > 0) && (
+        {open && (loading || results.length > 0 || query.trim().length > 0) && (
           <div className="absolute left-0 right-0 top-full mt-1 bg-background border border-border rounded-xl shadow-2xl overflow-hidden" style={{ zIndex: 9999 }}>
             {loading ? (
               <div className="px-3 py-3 text-sm text-muted-foreground flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" /> Searching…
+              </div>
+            ) : query.trim().length > 0 && query.trim().length < 3 ? (
+              <div className="px-3 py-3 text-sm text-muted-foreground">
+                Type at least 3 letters to see suggestions.
               </div>
             ) : (
               results.map((r, i) => (

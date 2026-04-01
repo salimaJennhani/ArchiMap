@@ -1,10 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { type Project } from '@shared/schema';
 import { Link } from 'wouter';
 import { parseLatLng } from '@/lib/map/coords';
 import { initLeafletDefaultIcon } from '@/lib/map/leaflet';
+import { LocateFixed, RefreshCcw, MousePointer2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 initLeafletDefaultIcon();
 
@@ -56,21 +58,44 @@ interface ProjectMapProps {
   projects: Project[];
   height?: string;
   interactive?: boolean;
+  focus?: { lat: number; lng: number; zoom?: number } | null;
+  showControls?: boolean;
 }
 
-export function ProjectMap({ projects, height = "400px", interactive = true }: ProjectMapProps) {
+function FocusTo({ focus }: { focus: { lat: number; lng: number; zoom?: number } | null }) {
+  const map = useMap();
+  useEffect(() => {
+    (window as any).__leaflet_map_instance = map;
+    if (!focus) return;
+    if (!Number.isFinite(focus.lat) || !Number.isFinite(focus.lng)) return;
+    map.flyTo([focus.lat, focus.lng], focus.zoom ?? Math.max(map.getZoom(), 14), { duration: 0.6 });
+  }, [focus, map]);
+  return null;
+}
+
+export function ProjectMap({ projects, height = "400px", interactive = true, focus = null, showControls = true }: ProjectMapProps) {
   const defaultCenter: [number, number] = [36.8065, 10.1815]; // Tunis default
   const tunisiaBounds: [[number, number], [number, number]] = [[30.2, 7.524], [37.6, 11.6]];
   const validProjects = projects.filter(p => parseLatLng(p.latitude, p.longitude) !== null);
   const first = validProjects[0] ? parseLatLng(validProjects[0].latitude, validProjects[0].longitude) : null;
   const center = first ? ([first.lat, first.lng] as [number, number]) : defaultCenter;
+  const boundsForProjects = useMemo(() => {
+    const coords = validProjects
+      .map((p) => parseLatLng(p.latitude, p.longitude))
+      .filter((x): x is { lat: number; lng: number } => x !== null);
+    if (coords.length < 2) return null;
+    return L.latLngBounds(coords.map((c) => [c.lat, c.lng]));
+  }, [validProjects]);
+
+  const [scrollEnabled, setScrollEnabled] = useState(interactive);
+  useEffect(() => setScrollEnabled(interactive), [interactive]);
 
   return (
     <div className="rounded-2xl overflow-hidden shadow-lg border border-border/50 relative z-0" style={{ height }}>
       <MapContainer
         center={center}
         zoom={validProjects.length === 1 ? 14 : 6}
-        scrollWheelZoom={interactive}
+        scrollWheelZoom={scrollEnabled && interactive}
         dragging={interactive}
         zoomControl={interactive}
         maxBounds={tunisiaBounds}
@@ -83,6 +108,7 @@ export function ProjectMap({ projects, height = "400px", interactive = true }: P
         />
 
         {validProjects.length > 1 && <MapBounds projects={validProjects} />}
+        <FocusTo focus={focus} />
 
         {validProjects.map((project) => {
           const ll = parseLatLng(project.latitude, project.longitude);
@@ -109,6 +135,57 @@ export function ProjectMap({ projects, height = "400px", interactive = true }: P
           );
         })}
       </MapContainer>
+
+      {showControls && interactive && (
+        <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="shadow-md bg-background/90 backdrop-blur border border-border/60"
+            title={scrollEnabled ? "Disable scroll zoom" : "Enable scroll zoom"}
+            onClick={() => setScrollEnabled(v => !v)}
+          >
+            <MousePointer2 className="w-4 h-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="shadow-md bg-background/90 backdrop-blur border border-border/60"
+            title="Locate me"
+            onClick={() => {
+              if (!navigator.geolocation) return;
+              navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  const { latitude, longitude } = pos.coords;
+                  const map = (window as any).__leaflet_map_instance as L.Map | undefined;
+                  if (map) map.flyTo([latitude, longitude], 15, { duration: 0.6 });
+                },
+                () => {},
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+              );
+            }}
+          >
+            <LocateFixed className="w-4 h-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="shadow-md bg-background/90 backdrop-blur border border-border/60"
+            title="Reset view"
+            onClick={() => {
+              const map = (window as any).__leaflet_map_instance as L.Map | undefined;
+              if (!map) return;
+              if (boundsForProjects) map.fitBounds(boundsForProjects, { padding: [50, 50] });
+              else map.flyTo(defaultCenter, 6, { duration: 0.6 });
+            }}
+          >
+            <RefreshCcw className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
